@@ -20,6 +20,9 @@ Les réponses aux questions posées dans cet énoncé sont attendues dans un fic
 ### 1.0: Installation de Istio sur son poste
 https://istio.io/docs/setup/kubernetes/download-release/
 
+### 1.1: Installation de Helm sur son poste
+https://github.com/helm/helm/blob/master/docs/install.md
+
 ### 1.1: Installation de Istio sur le cluster Kubernetes
 https://istio.io/docs/setup/kubernetes/helm-install/
 

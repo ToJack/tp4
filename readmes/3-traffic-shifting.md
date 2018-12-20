@@ -1,3 +1,5 @@
+https://istio.io/docs/tasks/traffic-management/traffic-shifting/
+
 # Traffic shifting
 ```bash
 istioctl create -f samples/bookinfo/kube/route-rule-all-v1.yaml

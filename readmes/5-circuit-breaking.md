@@ -1,41 +1,41 @@
+https://istio.io/docs/tasks/traffic-management/circuit-breaking/
+
 # Circuit breaking
 ```bash
-kubectl apply -f <(istioctl kube-inject --debug -f samples/httpbin/httpbin.yaml)
-cat samples/httpbin/routerules/httpbin-v1.yaml
-istioctl create -f samples/httpbin/routerules/httpbin-v1.yaml
+kubectl apply -f samples/httpbin/httpbin.yaml
 ```
 
 # Define maxConnections=1 and httpMaxPendingRequests=1
 ```bash
-cat <<EOF | istioctl create -f -
-apiVersion: config.istio.io/v1beta1
-kind: DestinationPolicy
+cat <<EOF | kubectl apply -f -
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
 metadata:
-  name: httpbin-circuit-breaker
+  name: httpbin
 spec:
-  destination:
-    name: httpbin
-    labels:
-      version: v1
-  circuitBreaker:
-    simpleCb:
-      maxConnections: 1
-      httpMaxPendingRequests: 1
-      sleepWindow: 3m
-      httpDetectionInterval: 1s
-      httpMaxEjectionPercent: 100
-      httpConsecutiveErrors: 1
-      httpMaxRequestsPerConnection: 1
+  host: httpbin
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 1
+      http:
+        http1MaxPendingRequests: 1
+        maxRequestsPerConnection: 1
+    outlierDetection:
+      consecutiveErrors: 1
+      interval: 1s
+      baseEjectionTime: 3m
+      maxEjectionPercent: 100
 EOF
 ```
 
 ```bash
-istioctl get destinationpolicy
+kubectl get destinationrule httpbin -o yaml
 ```
 
 # Deploy Fortio (stress test tool)
 ```bash
-kubectl apply -f <(istioctl kube-inject --debug -f samples/httpbin/sample-client/fortio-deploy.yaml)
+kubectl apply -f <(istioctl kube-inject -f samples/httpbin/sample-client/fortio-deploy.yaml)
 ```
 
 # Test Fortio
@@ -56,21 +56,20 @@ content-length: 445
 x-envoy-upstream-service-time: 36
 
 {
-  "args": {}, 
+  "args": {},
   "headers": {
-    "Content-Length": "0", 
-    "Host": "httpbin:8000", 
-    "User-Agent": "istio/fortio-0.6.2", 
-    "X-B3-Sampled": "1", 
-    "X-B3-Spanid": "824fbd828d809bf4", 
-    "X-B3-Traceid": "824fbd828d809bf4", 
-    "X-Ot-Span-Context": "824fbd828d809bf4;824fbd828d809bf4;0000000000000000", 
+    "Content-Length": "0",
+    "Host": "httpbin:8000",
+    "User-Agent": "istio/fortio-0.6.2",
+    "X-B3-Sampled": "1",
+    "X-B3-Spanid": "824fbd828d809bf4",
+    "X-B3-Traceid": "824fbd828d809bf4",
+    "X-Ot-Span-Context": "824fbd828d809bf4;824fbd828d809bf4;0000000000000000",
     "X-Request-Id": "1ad2de20-806e-9622-949a-bd1d9735a3f4"
-  }, 
-  "origin": "127.0.0.1", 
+  },
+  "origin": "127.0.0.1",
   "url": "http://httpbin:8000/get"
-}
-```
+}```
 
 # Break something (2 concurrent connections and 20 requests)
 ```bash
@@ -159,16 +158,15 @@ kubectl exec -it $FORTIO_POD  -c istio-proxy  -- sh -c 'curl localhost:15000/sta
 
 # upstream_rq_pending_overflow are requests flag for circuit breaking
 ```bash
-cluster.out.httpbin.springistio.svc.cluster.local|http|version=v1.upstream_rq_pending_active: 0
-cluster.out.httpbin.springistio.svc.cluster.local|http|version=v1.upstream_rq_pending_failure_eject: 0
-cluster.out.httpbin.springistio.svc.cluster.local|http|version=v1.upstream_rq_pending_overflow: 12
-cluster.out.httpbin.springistio.svc.cluster.local|http|version=v1.upstream_rq_pending_total: 39
+cluster.outbound|80||httpbin.springistio.svc.cluster.local.upstream_rq_pending_active: 0
+cluster.outbound|80||httpbin.springistio.svc.cluster.local.upstream_rq_pending_failure_eject: 0
+cluster.outbound|80||httpbin.springistio.svc.cluster.local.upstream_rq_pending_overflow: 12
+cluster.outbound|80||httpbin.springistio.svc.cluster.local.upstream_rq_pending_total: 39
 ```
 
 # Cleanup
 ```bash
-istioctl delete routerule httpbin-default-v1
-istioctl delete destinationpolicy httpbin-circuit-breaker
+kubectl delete destinationrule httpbin
 kubectl delete deploy httpbin fortio-deploy
 kubectl delete svc httpbin
 ```

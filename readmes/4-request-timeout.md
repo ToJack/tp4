@@ -1,41 +1,47 @@
+https://istio.io/docs/tasks/traffic-management/request-timeouts/
+
 # Setting request timeout
 ```bash
-istioctl create -f samples/bookinfo/kube/route-rule-all-v1.yaml
+kubectl apply -f samples/bookinfo/networking/virtual-service-all-v1.yaml
 ```
 
 # Route all to v2
 ```bash
-cat <<EOF | istioctl replace -f -
-apiVersion: config.istio.io/v1alpha2
-kind: RouteRule
+cat <<EOF | kubectl apply -f -
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
 metadata:
-  name: reviews-default
+  name: reviews
 spec:
-  destination:
-    name: reviews
-  route:
-  - labels:
-      version: v2
+  hosts:
+    - reviews
+  http:
+  - route:
+    - destination:
+        host: reviews
+        subset: v2
 EOF
 ```
 
 # Add 2s delay
 ```bash
-cat <<EOF | istioctl replace -f -
-apiVersion: config.istio.io/v1alpha2
-kind: RouteRule
+cat <<EOF | kubectl apply -f -
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
 metadata:
-  name: ratings-default
+  name: ratings
 spec:
-  destination:
-    name: ratings
-  route:
-  - labels:
-      version: v1
-  httpFault:
-    delay:
-      percent: 100
-      fixedDelay: 2s
+  hosts:
+  - ratings
+  http:
+  - fault:
+      delay:
+        percent: 100
+        fixedDelay: 2s
+    route:
+    - destination:
+        host: ratings
+        subset: v1
 EOF
 ```
 
@@ -43,20 +49,20 @@ EOF
 
 # Add 1s timeout (default 15s)
 ```bash
-cat <<EOF | istioctl replace -f -
-apiVersion: config.istio.io/v1alpha2
-kind: RouteRule
+cat <<EOF | kubectl apply -f -
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
 metadata:
-  name: reviews-default
+  name: reviews
 spec:
-  destination:
-    name: reviews
-  route:
-  - labels:
-      version: v2
-  httpReqTimeout:
-    simpleTimeout:
-      timeout: 1s
+  hosts:
+  - reviews
+  http:
+  - route:
+    - destination:
+        host: reviews
+        subset: v2
+    timeout: 0.5s
 EOF
 ```
 
@@ -64,5 +70,5 @@ EOF
 
 # Cleanup
 ```bash
-istioctl delete -f samples/bookinfo/kube/route-rule-all-v1.yaml
+kubectl delete -f samples/bookinfo/networking/virtual-service-all-v1.yaml
 ```

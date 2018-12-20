@@ -93,73 +93,127 @@ EOF
 
 # Create default route -> v1
 ```bash
-cat <<EOF | istioctl create -f -
-apiVersion: config.istio.io/v1alpha2
-kind: RouteRule
+cat <<EOF | kubectl apply -f -
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
 metadata:
-  name: httpbin-default-v1
+  name: httpbin
 spec:
-  destination:
-    name: httpbin
-  precedence: 5
-  route:
-  - labels:
+  hosts:
+    - httpbin
+  http:
+  - route:
+    - destination:
+        host: httpbin
+        subset: v1
+      weight: 100
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: httpbin
+spec:
+  host: httpbin
+  subsets:
+  - name: v1
+    labels:
       version: v1
+  - name: v2
+    labels:
+      version: v2
 EOF
 ```
 
 # All traffic should go to v1
 ```bash
 export SLEEP_POD=$(kubectl get pod -l app=sleep -o jsonpath={.items..metadata.name})
-kubectl exec -it $SLEEP_POD -c sleep -- sh -c 'curl  http://httpbin:8080/headers'
+kubectl exec -it $SLEEP_POD -c sleep -- sh -c 'curl  http://httpbin:8080/headers' | python -m json.tool
 ```
+
+```bash
+{
+  "headers": {
+    "Accept": "*/*",
+    "Content-Length": "0",
+    "Host": "httpbin:8080",
+    "User-Agent": "curl/7.35.0",
+    "X-B3-Sampled": "1",
+    "X-B3-Spanid": "eca3d7ed8f2e6a0a",
+    "X-B3-Traceid": "eca3d7ed8f2e6a0a",
+    "X-Ot-Span-Context": "eca3d7ed8f2e6a0a;eca3d7ed8f2e6a0a;0000000000000000"
+  }
+}```
 
 # Check logs for v1 and v2 pods
 # Only traffic for v1 pod
 ```bash
-kubectl logs -f httpbin-v1-2113278084-98whj -c httpbin
+export V1_POD=$(kubectl get pod -l app=httpbin,version=v1 -o jsonpath={.items..metadata.name})
+kubectl logs -f $V1_POD -c httpbin
+```
+
+```bash
+127.0.0.1 - - [07/Mar/2018:19:02:43 +0000] "GET /headers HTTP/1.1" 200 321 "-" "curl/7.35.0"
+```
+
+```bash
+export V2_POD=$(kubectl get pod -l app=httpbin,version=v2 -o jsonpath={.items..metadata.name})
+kubectl logs -f $V2_POD -c httpbin
+```
+
+```bash
+<none>
 ```
 
 # Create route to mirror traffic to v2
 ```bash
-cat <<EOF | istioctl create -f -
-apiVersion: config.istio.io/v1alpha2
-kind: RouteRule
+cat <<EOF | kubectl apply -f -
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
 metadata:
-  name: mirror-traffic-to-httbin-v2
+  name: httpbin
 spec:
-  destination:
-    name: httpbin
-  precedence: 11
-  route:
-  - labels:
-      version: v1
-    weight: 100
-  - labels: 
-      version: v2
-    weight: 0
-  mirror:
-    name: httpbin
-    labels:
-      version: v2
+  hosts:
+    - httpbin
+  http:
+  - route:
+    - destination:
+        host: httpbin
+        subset: v1
+      weight: 100
+    mirror:
+      host: httpbin
+      subset: v2
 EOF
 ```
 
 # Send traffic
 ```bash
-kubectl exec -it $SLEEP_POD -c sleep -- sh -c 'curl  http://httpbin:8080/headers'
+kubectl exec -it $SLEEP_POD -c sleep -- sh -c 'curl  http://httpbin:8080/headers' | python -m json.tool
 ```
 
 # Check logs for v1 and v2
 # We should see traffic for v1 and v2
 ```bash
-kubectl logs -f httpbin-v1-2113278084-98whj -c httpbin
+kubectl logs -f $V1_POD -c httpbin
+```
+
+```bash
+127.0.0.1 - - [07/Mar/2018:19:02:43 +0000] "GET /headers HTTP/1.1" 200 321 "-" "curl/7.35.0"
+127.0.0.1 - - [07/Mar/2018:19:26:44 +0000] "GET /headers HTTP/1.1" 200 321 "-" "curl/7.35.0"
+```
+
+```bash
+kubectl logs -f $V2_POD -c httpbin
+```
+
+```bash
+127.0.0.1 - - [07/Mar/2018:19:26:44 +0000] "GET /headers HTTP/1.1" 200 361 "-" "curl/7.35.0"
 ```
 
 # Cleanup
 ```bash
-istioctl delete routerule mirror-traffic-to-httbin-v2
-istioctl delete routerule httpbin-default-v1
+kubectl delete virtualservice httpbin
+kubectl delete destinationrule httpbin
 kubectl delete deploy httpbin-v1 httpbin-v2 sleep
 kubectl delete svc httpbin
 ```
